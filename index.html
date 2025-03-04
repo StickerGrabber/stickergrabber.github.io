@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192x192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512x512.png">
+  <link rel="apple-touch-icon" href="icons/icon-192x192.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#fff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#000" media="(prefers-color-scheme: dark)">
+  <title>StickerGrabber</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont;
+    }
+
+    img {
+      width: 200px;
+      height: 200px;
+      object-fit: contain;
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+
+    #toolbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      z-index: 1000;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      height: 35px;
+      padding: 5px 0;
+      border-bottom: 0.5px solid;
+      backdrop-filter: blur(10px);
+
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    #app-title {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-size: 20px;
+      font-weight: bold;
+      padding: 12px;
+    }
+
+    #action-buttons {
+      display: flex;
+      gap: 10px;
+      padding-right: 12px;
+    }
+
+    #action-buttons > * {
+      font-family: system-ui;
+      font-size: 13px;
+      font-weight: bold;
+      border-width: 0px;
+      border-radius: 5px;
+      clip-path: inset(0 round 5px);
+      height: 28px;
+      padding: 0px 12px;
+      appearance: none;
+    }
+
+    #action-buttons > *:not(:disabled) {
+      cursor: pointer;
+    }
+
+    #editor {
+      width: 100%;
+      padding-top: 45px;
+      height: calc(100vh - 45px);
+      outline: none;
+    }
+
+    #editor[data-placeholder]:empty::before {
+      content: attr(data-placeholder);
+      opacity: 0.4;
+      pointer-events: none;
+      display: block;
+    }
+
+    /* Colors */
+
+    body, #toolbar {
+      color: #000;
+    }
+
+    #toolbar {
+      border-bottom-color: #a9a9a9;
+      background: #ffffff99;
+    }
+
+    #action-buttons > * {
+      background-color: rgba(0, 0, 0, 0.04);
+      color: #242424;
+    }
+
+    @media (hover: hover) {
+      #action-buttons > *:not(:disabled):hover {
+        background-color: rgba(0, 0, 0, 0.08);
+      }
+    }
+
+    @media (prefers-color-scheme: dark) {
+      body, #toolbar {
+        color: #fff;
+      }
+
+      #toolbar {
+        border-bottom-color: #333333;
+        background: #00000099;
+      }
+
+      #action-buttons > * {
+        background-color: rgba(255, 255, 255, 0.1);
+        color: #e9e9e9;
+      }
+
+      @media (hover: hover) {
+        #action-buttons > *:not(:disabled):hover {
+          background-color: rgba(255, 255, 255, 0.2);
+        }
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="toolbar">
+    <span style="display: flex; align-items: center;">
+      <span id="app-title">StickerGrabber</span>
+    </span>
+    <div id="action-buttons">
+      <button type="button" id="save-button" onclick="saveImages();" disabled>Save</button>
+    </div>
+  </div>
+  <div id="editor" contenteditable="true" oninput="cleanUp(this); updateState();" data-placeholder="Insert stickers using the system keyboard, or drag and drop them from the expanded sticker picker (for better quality)."></div>
+  <script>
+    function cleanUp(node) {
+      const children = Array.from(node.childNodes);
+      for (const node of children) {
+        if (node.nodeType === Node.TEXT_NODE || (node.nodeType === Node.ELEMENT_NODE && node.tagName !== 'IMG')) {
+          node.remove();
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+          cleanUp(node);
+        }
+      }
+    }
+
+    function updateState() {
+      const button = document.querySelector('#save-button');
+      button.disabled = document.querySelectorAll('img').length === 0;
+    }
+
+    async function saveImages() {
+      const images = Array.from(document.querySelectorAll('img'));
+      const blobs = await Promise.all(images.map(getBlob));
+      const files = blobs.map((blob, index) => new File([blob], `Image ${index + 1}.png`, { type: blob.type }));
+
+      try {
+        await navigator.share({ files });
+        document.querySelector('#editor').innerHTML = '';
+        updateState();
+      } catch (error) {
+        // alert(error);
+      }
+    }
+
+    async function getBlob(element) {
+      if (element.src.startsWith('blob:')) {
+        const response = await fetch(element.src);
+        return response.blob();
+      }
+
+      return new Promise(resolve => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+
+        canvas.width = element.naturalWidth;
+        canvas.height = element.naturalHeight;
+        ctx.drawImage(element, 0, 0);
+
+        canvas.toBlob(resolve, 'image/png');
+      });
+    }
+  </script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js')
+        .then(registration => {
+          console.log('Service Worker registered with scope: ', registration.scope);
+        })
+        .catch(error => {
+          console.log('Service Worker registration failed: ', error);
+        });
+      });
+    }
+  </script>
+</body>
+</html>
